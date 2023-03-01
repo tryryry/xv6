@@ -1,6 +1,6 @@
-- [x] Lab1 Xv6 and Unix utilities
+- [x] Lab1 
 - [x] Lab2 
-- [ ] Lab3
+- [x] Lab3
 - [ ] Lab4
 - [ ] Lab5
 - [ ] Lab6
