@@ -116,6 +116,15 @@ exec(char *path, char **argv)
   p->trapframe->sp = sp; // initial stack pointer
   proc_freepagetable(oldpagetable, oldsz);
 
+  uvmunmap(p->kernel_pagetable,0,PGROUNDUP(oldsz)/PGSIZE,0);
+  if(uvmcopy_kernel(p->pagetable,p->kernel_pagetable,0,p->sz) < 0){
+    return -1;
+  }
+
+  if(p->pid == 1){
+    vmprint(p->pagetable, 0);
+  }
+
   return argc; // this ends up in a0, the first argument to main(argc, argv)
 
  bad:

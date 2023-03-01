@@ -1,0 +1,5 @@
+1. page 0 contains level 1 pagetable.page 2 contains level 2 pagetable. NO.
+2. to forbid overflow. srcva = 0x0000000f len=0xffffffffffffffff p->sz=0x0c000000
+srcva >= p->sz false
+srcva+len= 0xe >= p-sz false
+srcva+len = 0xe < srcva true

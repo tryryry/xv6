@@ -3,6 +3,8 @@
 #include "memlayout.h"
 #include "elf.h"
 #include "riscv.h"
+#include "spinlock.h"
+#include "proc.h"
 #include "defs.h"
 #include "fs.h"
 
@@ -132,7 +134,8 @@ kvmpa(uint64 va)
   pte_t *pte;
   uint64 pa;
   
-  pte = walk(kernel_pagetable, va, 0);
+  struct proc *p = myproc();
+  pte = walk(p->kernel_pagetable, va, 0);
   if(pte == 0)
     panic("kvmpa");
   if((*pte & PTE_V) == 0)
@@ -227,13 +230,14 @@ uvminit(pagetable_t pagetable, uchar *src, uint sz)
 // newsz, which need not be page aligned.  Returns new size or 0 on error.
 uint64
 uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
-{
+{;
   char *mem;
   uint64 a;
 
   if(newsz < oldsz)
     return oldsz;
-
+  if(newsz >= PLIC)
+    return 0;
   oldsz = PGROUNDUP(oldsz);
   for(a = oldsz; a < newsz; a += PGSIZE){
     mem = kalloc();
@@ -289,6 +293,25 @@ freewalk(pagetable_t pagetable)
   kfree((void*)pagetable);
 }
 
+//print pagetable
+void vmprint(pagetable_t pagetable, int idx){
+  if(idx == 0)
+    printf("page table %p\n",pagetable);
+  for(int i = 0; i < 512; i++){
+    pte_t pte = pagetable[i];
+    if(pte & PTE_V){
+      printf("..");
+      for(int i = 0; i < idx;i++)
+        printf(" ..");
+      printf("%d: pte %p pa %p\n",i,pte,PTE2PA(pte));
+      if((pte & (PTE_R|PTE_W|PTE_X)) == 0){
+        uint64 child = PTE2PA(pte);
+        vmprint((pagetable_t)child,idx+1);
+      }
+    }
+  }
+}
+
 // Free user memory pages,
 // then free page-table pages.
 void
@@ -297,6 +320,31 @@ uvmfree(pagetable_t pagetable, uint64 sz)
   if(sz > 0)
     uvmunmap(pagetable, 0, PGROUNDUP(sz)/PGSIZE, 1);
   freewalk(pagetable);
+}
+
+//Given a process's pagetable, copy it into kernel pagetable
+// Copies only page table
+// returns 0 on success, -1 on failure.
+int
+uvmcopy_kernel(pagetable_t p,pagetable_t k,uint64 start,uint64 sz)
+{
+  pte_t *pte;
+  uint64 pa, i;
+  uint flags;
+  
+
+  for(i = start; i < sz; i += PGSIZE){
+    if((pte = walk(p, i, 0)) == 0)
+      panic("uvmcopy: pte should exist");
+    if((*pte & PTE_V) == 0)
+      panic("uvmcopy: page not present");
+    pa = PTE2PA(*pte);
+    flags = PTE_K_FLAGS(*pte);
+    if(mappages(k, i, PGSIZE, (uint64)pa, flags) != 0){
+      return -1;
+    }
+  }
+  return 0;
 }
 
 // Given a parent process's page table, copy
