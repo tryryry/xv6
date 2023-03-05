@@ -113,6 +113,12 @@ found:
     return 0;
   }
 
+  if((p->saved_trapframe = (struct trapframe *)kalloc()) == 0){
+    release(&p->lock);
+    return 0;
+  }
+
+
   // An empty user page table.
   p->pagetable = proc_pagetable(p);
   if(p->pagetable == 0){
@@ -127,6 +133,10 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
+  p->passed=0;
+  p->alarm_interval=0;
+  p->handler=0;
+  p->in_call=0;
   return p;
 }
 
@@ -138,6 +148,8 @@ freeproc(struct proc *p)
 {
   if(p->trapframe)
     kfree((void*)p->trapframe);
+  if(p->saved_trapframe)
+    kfree((void*)p->saved_trapframe);
   p->trapframe = 0;
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
@@ -696,4 +708,57 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+int sigalarm(int ticks, void (*handler)()){
+  struct proc *p = myproc();
+  p->alarm_interval=ticks;
+  p->handler=handler;
+  return 0;
+}
+
+int sigreturn(void){
+  struct proc *p = myproc();
+  copyframe(p->trapframe,p->saved_trapframe);
+  p->in_call=0;
+  return 0;
+}
+
+void copyframe(struct trapframe* new,struct trapframe* old){
+  new->ra=old->ra;
+  new->sp=old->sp;
+  new->gp=old->gp;
+  new->tp=old->tp;
+
+  new->t0=old->t0;
+  new->t1=old->t1;
+  new->t2=old->t2;
+  new->t3=old->t3;
+  new->t4=old->t4;
+  new->t5=old->t5;
+  new->t6=old->t6;
+
+  new->s0=old->s0;
+  new->s1=old->s1;
+  new->s2=old->s2;
+  new->s3=old->s3;
+  new->s4=old->s4;
+  new->s5=old->s5;
+  new->s6=old->s6;
+  new->s7=old->s7;
+  new->s8=old->s8;
+  new->s9=old->s9;
+  new->s10=old->s10;
+  new->s11=old->s11;
+
+  new->a0=old->a0;
+  new->a1=old->a1;
+  new->a2=old->a2;
+  new->a3=old->a3;
+  new->a4=old->a3;
+  new->a5=old->a5;
+  new->a6=old->a6;
+  new->a7=old->a7;
+
+  new->epc=old->epc;
 }
