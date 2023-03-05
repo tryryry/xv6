@@ -329,8 +329,7 @@ int
 uvmcopy_kernel(pagetable_t p,pagetable_t k,uint64 start,uint64 sz)
 {
   pte_t *pte;
-  uint64 pa, i;
-  uint flags;
+  uint64 i;
   pte_t *kpte;
 
   for(i = start; i < sz; i += PGSIZE){
@@ -338,12 +337,10 @@ uvmcopy_kernel(pagetable_t p,pagetable_t k,uint64 start,uint64 sz)
       panic("uvmcopy: pte should exist");
     if((*pte & PTE_V) == 0)
       panic("uvmcopy: page not present");
-    pa = PTE2PA(*pte);
-    flags = PTE_K_FLAGS(*pte);
-
     if((kpte = walk(k, i, 1)) == 0)
       panic("uvmcopy: kpte should exist");
-    *kpte=PA2PTE(pa)|flags;
+    *kpte = *pte;
+    *kpte &= ~(PTE_U | PTE_W | PTE_X);
     // if(mappages(k, i, PGSIZE, (uint64)pa, flags) != 0){
     //   return -1;
     // }
