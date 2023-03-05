@@ -230,7 +230,7 @@ uvminit(pagetable_t pagetable, uchar *src, uint sz)
 // newsz, which need not be page aligned.  Returns new size or 0 on error.
 uint64
 uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
-{;
+{
   char *mem;
   uint64 a;
 
@@ -331,7 +331,7 @@ uvmcopy_kernel(pagetable_t p,pagetable_t k,uint64 start,uint64 sz)
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  
+  pte_t *kpte;
 
   for(i = start; i < sz; i += PGSIZE){
     if((pte = walk(p, i, 0)) == 0)
@@ -340,9 +340,13 @@ uvmcopy_kernel(pagetable_t p,pagetable_t k,uint64 start,uint64 sz)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
     flags = PTE_K_FLAGS(*pte);
-    if(mappages(k, i, PGSIZE, (uint64)pa, flags) != 0){
-      return -1;
-    }
+
+    if((kpte = walk(k, i, 1)) == 0)
+      panic("uvmcopy: kpte should exist");
+    *kpte=PA2PTE(pa)|flags;
+    // if(mappages(k, i, PGSIZE, (uint64)pa, flags) != 0){
+    //   return -1;
+    // }
   }
   return 0;
 }

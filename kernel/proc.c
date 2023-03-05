@@ -95,7 +95,7 @@ pagetable_t proc_kernel_pagetable(){
 
   mappages(pagetable,VIRTIO0,PGSIZE,VIRTIO0,PTE_R | PTE_W);
 
-  //mappages(pagetable,CLINT,0x10000,CLINT,PTE_R | PTE_W);
+  mappages(pagetable,CLINT,0x10000,CLINT,PTE_R | PTE_W);
 
   mappages(pagetable,PLIC,0x400000,PLIC,PTE_R | PTE_W);
 
