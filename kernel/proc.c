@@ -420,6 +420,7 @@ wait(uint64 addr)
         if(np->state == ZOMBIE){
           // Found one.
           pid = np->pid;
+          //printf("addr: %p, sp: %p, sz: %p\n",addr,p->trapframe->sp,p->sz);
           if(addr != 0 && copyout(p->pagetable, addr, (char *)&np->xstate,
                                   sizeof(np->xstate)) < 0) {
             release(&np->lock);
