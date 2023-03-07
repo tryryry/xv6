@@ -308,10 +308,10 @@ uvmfree(pagetable_t pagetable, uint64 sz)
 int
 uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 {
-  pte_t *pte;
+  pte_t *pte, *new_pte;
   uint64 pa, i;
-  uint flags;
-  char *mem;
+  //uint flags;
+  //char *mem;
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
@@ -319,20 +319,27 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     if((*pte & PTE_V) == 0)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
-    flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
-      goto err;
-    }
+    *pte &= ~PTE_W;
+    *pte |= 0x100;
+    new_pte = walk(new, i, 1);
+    *new_pte = *pte;
+    refinc((void*)pa);
+    //printf("uvmcopy: %p\n",*new_pte);
+   
+    // flags = PTE_FLAGS(*pte);
+    // if((mem = kalloc()) == 0)
+    //   goto err;
+    // memmove(mem, (char*)pa, PGSIZE);
+    // if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
+    //   kfree(mem);
+    //   goto err;
+    // }
   }
   return 0;
 
- err:
-  uvmunmap(new, 0, i / PGSIZE, 1);
-  return -1;
+//  err:
+//   uvmunmap(new, 0, i / PGSIZE, 1);
+//   return -1;
 }
 
 // mark a PTE invalid for user access.
@@ -355,9 +362,40 @@ int
 copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 {
   uint64 n, va0, pa0;
-
+  //printf("dstva: %p\n", dstva);
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
+
+    pte_t *pte;
+    char *mem;
+
+    if(va0 >= MAXVA)
+      return -1;
+
+    pte = walk(pagetable, va0, 0);
+    if(pte == 0)
+      return -1;
+    if((*pte & PTE_V) == 0)
+      return -1;
+    if((*pte & PTE_U) == 0)
+      return -1;
+    if((*pte & 0x100) != 0){
+      mem = kalloc();
+      if(mem == 0)
+        return -1;
+      uint64 perm = PTE_FLAGS(*pte);
+      uint64 prev_mem = PTE2PA(*pte);
+      memmove((void*)mem, (void*)prev_mem, PGSIZE); 
+      uvmunmap(pagetable, va0, 1, 1); 
+      perm |= PTE_W;
+      perm &= ~0x100;
+      if(mappages(pagetable, va0, PGSIZE, (uint64)mem, perm) < 0){
+        kfree(mem);
+        return -1;
+      }
+    }
+    //pa0 = PTE2PA(*pte);
+    
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0)
       return -1;

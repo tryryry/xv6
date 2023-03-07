@@ -68,9 +68,51 @@ usertrap(void)
   } else if((which_dev = devintr()) != 0){
     // ok
   } else {
-    printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
-    printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
-    p->killed = 1;
+    if(r_scause() == 15){
+      // printf("usertrap(): page falut scause %p pid=%d\n", r_scause(), p->pid);
+      // printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+
+      uint64 stval;
+      
+      char *mem;
+      pte_t *pte;
+      uint64 perm;
+
+      stval = r_stval();
+      if(stval >= MAXVA){
+         p->killed = 1;
+        exit(-1);
+      }
+       
+      stval = PGROUNDDOWN(stval);
+      mem = kalloc();
+      if(mem == 0)
+        p->killed = 1;
+      else{
+        if((pte = walk(p->pagetable, stval, 0)) == 0){
+          panic("cow-usertrap: pte should exist");
+        }
+        if((*pte & 0x100) != 0){
+          perm = PTE_FLAGS(*pte);
+          uint64 prev_mem = PTE2PA(*pte);
+          memmove((void*)mem, (void*)prev_mem, PGSIZE); 
+          uvmunmap(p->pagetable, stval, 1, 1); 
+          perm |= PTE_W;
+          perm &= ~0x100;
+          if(mappages(p->pagetable, stval, PGSIZE, (uint64)mem, perm) < 0){
+            kfree(mem);
+          }
+        }else{
+          printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
+          printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+          p->killed = 1;
+        }
+      }
+    }else{
+      printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
+      printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+      p->killed = 1;
+    }
   }
 
   if(p->killed)

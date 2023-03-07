@@ -8,11 +8,15 @@
 #include "spinlock.h"
 #include "riscv.h"
 #include "defs.h"
+#define PG2REFIDX(_pa) ((((uint64)_pa) - KERNBASE) / PGSIZE)
+#define MX_PGIDX PG2REFIDX(PHYSTOP)
 
 void freerange(void *pa_start, void *pa_end);
 
 extern char end[]; // first address after kernel.
                    // defined by kernel.ld.
+
+int pagerefcnt[MX_PGIDX];
 
 struct run {
   struct run *next;
@@ -51,6 +55,10 @@ kfree(void *pa)
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
     panic("kfree");
 
+  int index = PG2REFIDX(pa);
+  pagerefcnt[index]--;
+  if(pagerefcnt[index] > 0)
+    return;
   // Fill with junk to catch dangling refs.
   memset(pa, 1, PGSIZE);
 
@@ -76,7 +84,16 @@ kalloc(void)
     kmem.freelist = r->next;
   release(&kmem.lock);
 
-  if(r)
-    memset((char*)r, 5, PGSIZE); // fill with junk
+  if(r){
+    // fill with junk
+    memset((char*)r, 5, PGSIZE);
+    int index = PG2REFIDX(r);
+    pagerefcnt[index] = 1;
+  }
   return (void*)r;
+}
+
+void refinc(void* pa){
+  int index = PG2REFIDX(pa);
+  pagerefcnt[index]++;
 }
