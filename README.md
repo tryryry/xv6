@@ -3,7 +3,7 @@
 - [x] Lab3
 - [x] Lab4
 - [x] Lab5
-- [ ] Lab6
+- [x] Lab6
 - [ ] Lab7
 - [ ] Lab8
 - [ ] Lab9
