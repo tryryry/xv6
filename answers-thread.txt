@@ -1,0 +1,35 @@
+1.thread_switch needs to save/restore only the callee-save registers. Why?
+thread_schedule is the caller, it will save/restore the caller-save registers.
+thread_switch is the callee,  it must save/restore the callee-save registers.
+
+2.This sets a breakpoint at line 60 of uthread.c. 
+The breakpoint may (or may not) be triggered before you even run uthread. 
+How could that happen?
+
+main() is thread 0, which will make the first invocation to thread_schedule(), when gdb uthread
+
+3.Why are there missing keys with 2 threads, but not with 1 thread? 
+Identify a sequence of events with 2 threads that can lead to a key being missing. 
+
+4.The user-level thread package interacts badly with the operating system in several ways. 
+For example, if one user-level thread blocks in a system call, another user-level thread won't run, 
+because the user-level threads scheduler doesn't know that one 
+of its threads has been descheduled by the xv6 scheduler. 
+As another example, two user-level threads will not run concurrently on different cores, 
+because the xv6 scheduler isn't aware that there are multiple threads that could run in parallel. 
+Note that if two user-level threads were to run truly in parallel, 
+this implementation won't work because of several races 
+(e.g., two threads on different processors could call thread_schedule concurrently, 
+select the same runnable thread, and both run it on different processors.)
+
+1(kernel thread) - N(user thread)
+problems:
+1.if one user-level thread blocks in a system call, another user-level thread won't run.
+2.user-level threads will not run concurrently on different cores.
+
+There are several ways of addressing these problems. 
+One is using scheduler activations and another is to use one kernel thread per 
+user-level thread (as Linux kernels do). Implement one of these ways in xv6. 
+This is not easy to get right; 
+for example, you will need to implement TLB shootdown when updating a page table 
+for a multithreaded user process.
