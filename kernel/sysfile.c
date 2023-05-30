@@ -334,6 +334,28 @@ sys_open(void)
     f->type = FD_DEVICE;
     f->major = ip->major;
   } else {
+    int depth = 0;
+    while(ip->type == T_SYMLINK && depth < 10 && !(omode & O_NOFOLLOW)){
+        char target[MAXPATH];
+        int r = readi(ip, 0, (uint64)target, 0, sizeof(target));
+        if(r != sizeof(target)) {
+          iunlockput(ip);
+          end_op();
+          return -1;
+        }
+        iunlockput(ip);
+        if((ip = namei(target)) == 0){
+          end_op();
+          return -1;
+        }
+        ilock(ip);
+        depth++;
+    }
+    if(depth == 10){
+      iunlockput(ip);
+      end_op();
+      return -1;
+    }
     f->type = FD_INODE;
     f->off = 0;
   }
@@ -483,4 +505,31 @@ sys_pipe(void)
     return -1;
   }
   return 0;
+}
+
+uint64
+sys_symlink(void){
+  char target[MAXPATH], path[MAXPATH];
+  int r;
+  if(argstr(0, target, MAXPATH) < 0)
+    return -1;
+  if(argstr(1, path, MAXPATH) < 0)
+    return -1;
+  struct inode *ip;
+  begin_op();
+  if((ip = namei(path)) == 0){
+    ip = create(path, T_SYMLINK, 0, 0);
+    if(ip == 0){
+      end_op();
+      return -1;
+    }
+  }else{
+    ilock(ip);
+  }
+  r = writei(ip, 0, (uint64)target, 0, sizeof(target));
+  ip->type = T_SYMLINK;
+  iunlockput(ip);
+  end_op();
+  if(r == sizeof(target)) return 0;
+  else return -1;
 }
