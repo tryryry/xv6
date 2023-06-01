@@ -5,9 +5,9 @@
 - [x] Lab5
 - [x] Lab6
 - [x] Lab7
-- [ ] Lab8
-- [ ] Lab9
-- [ ] Lab10
+- [x] Lab8
+- [x] Lab9
+- [x] Lab10
 - [ ] Lab11
 
 
