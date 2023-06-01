@@ -5,6 +5,12 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "fcntl.h"
+#include "fs.h"
+#include "sleeplock.h"
+#include "file.h"
+
+#define MAP_FAILED ((char *) -1)
 
 struct cpu cpus[NCPU];
 
@@ -160,7 +166,7 @@ freeproc(struct proc *p)
 }
 
 // Create a user page table for a given process,
-// with no user memory, but with trampoline pages.
+// with no user memory, but wipith trampoline pages.
 pagetable_t
 proc_pagetable(struct proc *p)
 {
@@ -281,7 +287,12 @@ fork(void)
     return -1;
   }
   np->sz = p->sz;
-
+  for(int i = 0; i < 16; i++){
+    if(p->vma[i].ref != 0){
+      np->vma[i] = p->vma[i];
+      filedup(np->vma[i].f);
+    }
+  }
   np->parent = p;
 
   // copy saved user registers.
@@ -350,6 +361,12 @@ exit(int status)
       struct file *f = p->ofile[fd];
       fileclose(f);
       p->ofile[fd] = 0;
+    }
+  }
+
+  for(int i = 0; i < 16; i++){
+    if(p->vma[i].ref != 0){
+      uvmunmap(p->pagetable, p->vma[i].minor, p->vma[i].pages, 0);
     }
   }
 
@@ -700,4 +717,83 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+void *mmap(void *addr, uint64 length, int prot, int flags, int fd, int offset){
+  struct proc *p = myproc();  
+  struct file* f = p->ofile[fd];
+  if(f->writable == 0 && (prot & PROT_WRITE) && (flags & MAP_SHARED)){
+    return MAP_FAILED;
+  }
+  filedup(f);
+  
+  uint64 start = PGROUNDDOWN((uint64)addr);
+  uint64 end = PGROUNDUP((uint64)addr + length);
+  uint64 pages = (end - start) / PGSIZE;
+  uint64 va = p->sz;
+  struct VMA vma;
+  vma.f = f;
+  vma.length = length;
+  vma.prot = prot;
+  vma.addr = va;
+  vma.offset = offset;
+  vma.flags = flags;
+  vma.minor = va;
+  vma.major = va + pages * PGSIZE;
+  vma.ref = 1;
+  vma.pages = pages;
+  for(int i = 0; i < 16; i++){
+    if(p->vma[i].ref == 0){
+      p->vma[i] = vma;
+      break;
+    }
+  }
+  p->sz = va + pages * PGSIZE;
+  return (void*)va;
+}
+
+int munmap(void *addr, uint64 length){
+  uint64 start = PGROUNDDOWN((uint64)addr);
+  uint64 end = PGROUNDUP((uint64)addr + length);
+  uint64 npages = (end - start) / PGSIZE;
+  struct proc *p = myproc();
+  int index = -1;
+  for(int i = 0; i < 16; i++){
+    if((uint64) addr >= p->vma[i].minor && (uint64)addr <= p->vma[i].major){
+      index = i;
+      break;
+    } 
+  }
+  if(index == -1) return -1;
+  p->vma[index].pages = p->vma[index].pages - npages;
+  if(p->vma[index].pages == 0){
+    p->vma[index].ref = 0;
+    filedec(p->vma[index].f);
+  }
+  if(p->vma[index].flags & MAP_SHARED){
+    struct file *f = p->vma[index].f;
+    int offset = p->vma[index].offset;
+    int n = length;
+    int max = ((MAXOPBLOCKS-1-1-2) / 2) * 1024;
+    int i = 0;
+    int r = 0;
+    while(i < n){
+      int n1 = n - i;
+      if(n1 > max)
+        n1 = max;
+      begin_op();
+      ilock(f->ip);
+      if ((r = writei(f->ip, 1, start + i, offset, n1)) > 0)
+        offset += r;
+      iunlock(f->ip);
+      end_op();
+      if(r != n1){
+          // error from writei
+        break;
+      }
+      i += r;
+    }
+  }
+  uvmunmap(p->pagetable, start, npages, 0);
+  return 0;
 }

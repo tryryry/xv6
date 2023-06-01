@@ -5,6 +5,10 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "fs.h"
+#include "sleeplock.h"
+#include "file.h"
+#include "fcntl.h"
 
 struct spinlock tickslock;
 uint ticks;
@@ -65,7 +69,45 @@ usertrap(void)
     intr_on();
 
     syscall();
-  } else if((which_dev = devintr()) != 0){
+  } else if(r_scause() == 0xd || r_scause() == 0xf){
+      int va = r_stval();
+      va = PGROUNDDOWN(va);
+     // printf("%s\n", va);
+      int index = -1;
+      for(int i = 0; i < 16; i++){
+        if(va >= p->vma[i].minor && va < p->vma[i].major && p->vma[i].ref == 1){
+          index = i;
+          break;
+        }
+      }
+      if(index == -1){
+        //panic("page fault");
+        p->killed = 1;
+      }else{
+        char* mem;
+        mem = kalloc();
+        memset(mem, 0, PGSIZE);
+        struct file* f = p->vma[index].f;
+        int off = p->vma[index].offset + (va - p->vma[index].minor);
+        ilock(f->ip);
+        readi(f->ip, 0,  (uint64)mem, off, PGSIZE);
+        iunlock(f->ip);
+        //printf("%p\n", va);
+        int perm = PTE_U;
+        if(p->vma[index].prot & PROT_READ){
+          perm |= PTE_R;
+        }
+        if(p->vma[index].prot & PROT_WRITE){
+          perm |= PTE_W;
+        }
+        if(p->vma[index].prot & PROT_EXEC){
+          perm |= PTE_X;
+        }
+        //printf("%d\n", p->vma[index].prot);
+        mappages(p->pagetable, va, PGSIZE, (uint64)mem, perm);
+      }
+      //p->killed = 1;
+  }else if((which_dev = devintr()) != 0){
     // ok
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
